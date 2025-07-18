@@ -165,11 +165,21 @@ function App() {
 
       if (!result.success) {
         if (result.retryAfter) {
+          const retryTime = Math.ceil(result.retryAfter / 60)
           toast({
-            title: 'Model is loading',
-            description: `The AI model is starting up. Please try again in ${result.retryAfter} seconds.`,
+            title: 'AI Model Loading',
+            description: `The AI model is starting up. Please try again in ${retryTime} minute${retryTime > 1 ? 's' : ''}. This is normal for the first request.`,
             variant: 'destructive'
           })
+        } else if (result.demo) {
+          // Show demo mode message
+          toast({
+            title: 'Service Temporarily Unavailable',
+            description: 'AI video generation is experiencing high demand. Please try again in a few minutes.',
+            variant: 'destructive'
+          })
+          
+          return
         } else {
           throw new Error(result.error || 'Video generation failed')
         }
