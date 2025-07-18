@@ -130,48 +130,65 @@ function App() {
 
     try {
       // Upload image to storage first
+      toast({
+        title: 'Uploading image...',
+        description: 'Preparing your image for animation',
+      })
+
       const { publicUrl } = await blink.storage.upload(
         selectedImage,
         `animations/${Date.now()}-${selectedImage.name}`,
         { upsert: true }
       )
 
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval)
-            return 90
-          }
-          return prev + Math.random() * 15
+      setProgress(20)
+
+      // Generate video using Hugging Face API
+      toast({
+        title: 'Generating video...',
+        description: 'AI is creating your animated video. This may take 30-60 seconds.',
+      })
+
+      const response = await fetch('https://ld84cuqm--generate-video.functions.blink.new', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageUrl: publicUrl,
+          prompt: prompt,
+          animationStyle: selectedStyle
         })
-      }, 1000)
+      })
 
-      // Generate video using AI
-      const videoPrompt = prompt 
-        ? `Animate this image with ${selectedStyle} style: ${prompt}`
-        : `Create a ${selectedStyle} animation from this image`
+      const result = await response.json()
 
-      // For now, we'll simulate video generation
-      // In a real implementation, this would call an AI video generation service
-      await new Promise(resolve => setTimeout(resolve, 8000))
-      
-      clearInterval(progressInterval)
+      if (!result.success) {
+        if (result.retryAfter) {
+          toast({
+            title: 'Model is loading',
+            description: `The AI model is starting up. Please try again in ${result.retryAfter} seconds.`,
+            variant: 'destructive'
+          })
+        } else {
+          throw new Error(result.error || 'Video generation failed')
+        }
+        return
+      }
+
       setProgress(100)
-
-      // Simulate generated video URL
-      setGeneratedVideo(publicUrl) // In real implementation, this would be the generated video URL
+      setGeneratedVideo(result.videoUrl)
 
       toast({
         title: 'Video generated successfully!',
-        description: 'Your animated video is ready to download',
+        description: `Your animated video is ready! Generated using ${result.model}`,
       })
 
     } catch (error) {
       console.error('Error generating video:', error)
       toast({
         title: 'Generation failed',
-        description: 'Something went wrong. Please try again.',
+        description: error.message || 'Something went wrong. Please try again.',
         variant: 'destructive'
       })
     } finally {
@@ -418,22 +435,66 @@ function App() {
 
               {/* Video Preview */}
               <Card className="p-6">
-                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-6">
-                  <div className="text-center">
-                    <Video className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">Video preview would appear here</p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      (In production, this would show the generated animated video)
-                    </p>
-                  </div>
+                <div className="aspect-video bg-muted rounded-lg overflow-hidden mb-6">
+                  {generatedVideo ? (
+                    <video
+                      src={generatedVideo}
+                      controls
+                      autoPlay
+                      loop
+                      muted
+                      className="w-full h-full object-cover"
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center">
+                        <Video className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">Loading video...</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Button className="flex-1">
+                  <Button 
+                    className="flex-1"
+                    onClick={() => {
+                      if (generatedVideo) {
+                        const link = document.createElement('a')
+                        link.href = generatedVideo
+                        link.download = `animated-video-${Date.now()}.mp4`
+                        document.body.appendChild(link)
+                        link.click()
+                        document.body.removeChild(link)
+                      }
+                    }}
+                    disabled={!generatedVideo}
+                  >
                     <Download className="w-4 h-4 mr-2" />
                     Download Video
                   </Button>
-                  <Button variant="outline" className="flex-1">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => {
+                      if (navigator.share && generatedVideo) {
+                        navigator.share({
+                          title: 'My AI Animated Video',
+                          text: 'Check out this animated video I created with AI!',
+                          url: generatedVideo
+                        }).catch(console.error)
+                      } else {
+                        navigator.clipboard.writeText(generatedVideo || '')
+                        toast({
+                          title: 'Link copied!',
+                          description: 'Video link copied to clipboard',
+                        })
+                      }
+                    }}
+                    disabled={!generatedVideo}
+                  >
                     <Share2 className="w-4 h-4 mr-2" />
                     Share
                   </Button>
